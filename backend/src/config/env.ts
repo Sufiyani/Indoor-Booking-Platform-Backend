@@ -10,7 +10,6 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   PORT: z.string().default('5000').transform((v) => parseInt(v, 10)),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  API_URL: z.string().default('http://localhost:5000'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   COOKIE_SECRET: z.string().default('indoorarena_cookie_secret_key'),

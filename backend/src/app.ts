@@ -78,3 +78,5 @@ app.use('/api/v1', v1Routes);
 // Centralized error handling
 app.use(errorHandler);
 
+
+export default app;

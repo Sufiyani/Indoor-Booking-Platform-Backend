@@ -1,0 +1,261 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum SportType {
+  CRICKET
+  FOOTBALL
+  PADEL
+}
+
+enum BookingStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum PaymentMethod {
+  CASH_ON_ARRIVAL
+  ONLINE_CARD
+  BANK_TRANSFER
+}
+
+enum PricingRuleType {
+  PERCENTAGE_SURCHARGE
+  FIXED_SURCHARGE
+  FIXED_PRICE
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("ADMIN") // ADMIN, SUPER_ADMIN
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admins")
+}
+
+model Court {
+  id                  String   @id @default(cuid())
+  name                String
+  slug                String   @unique
+  sport               SportType
+  description         String
+  basePricePerHour    Decimal  @db.Decimal(10, 2)
+  slotDurationMinutes Int      @default(60)
+  bufferMinutes       Int      @default(0)
+  isActive            Boolean  @default(true)
+  capacity            Int      @default(10)
+  courtType           String   @default("Indoor Turf")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  images         CourtImage[]
+  amenities      CourtAmenity[]
+  operatingHours OperatingHours[]
+  pricingRules   PricingRule[]
+  slotBlocks     SlotBlock[]
+  bookings       Booking[]
+  bookingSlots   BookingSlot[]
+
+  @@map("courts")
+}
+
+model CourtImage {
+  id           String   @id @default(cuid())
+  courtId      String
+  url          String
+  caption      String?
+  isPrimary    Boolean  @default(false)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  court Court @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@index([courtId])
+  @@map("court_images")
+}
+
+model Amenity {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  icon        String   @default("CheckCircle")
+  description String?
+  createdAt   DateTime @default(now())
+
+  courts CourtAmenity[]
+
+  @@map("amenities")
+}
+
+model CourtAmenity {
+  courtId   String
+  amenityId String
+
+  court   Court   @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([courtId, amenityId])
+  @@map("court_amenities")
+}
+
+model OperatingHours {
+  id        String  @id @default(cuid())
+  courtId   String
+  dayOfWeek Int     // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  openTime  String  // e.g. "08:00"
+  closeTime String  // e.g. "01:00"
+  isClosed  Boolean @default(false)
+
+  court Court @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@unique([courtId, dayOfWeek])
+  @@map("operating_hours")
+}
+
+model PricingRule {
+  id          String          @id @default(cuid())
+  courtId     String?         // null means applies to all courts if no court-specific rule
+  name        String
+  daysOfWeek  Int[]           // Array of days [0, 1, 2, 3, 4, 5, 6]
+  startTime   String          // e.g. "18:00"
+  endTime     String          // e.g. "23:59"
+  type        PricingRuleType @default(PERCENTAGE_SURCHARGE)
+  value       Decimal         @db.Decimal(10, 2) // e.g. 25.00 for 25% or 500 for Rs.500
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  court Court? @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@index([courtId])
+  @@map("pricing_rules")
+}
+
+model SlotBlock {
+  id          String   @id @default(cuid())
+  courtId     String
+  startTime   DateTime
+  endTime     DateTime
+  reason      String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  court Court @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@index([courtId, startTime, endTime])
+  @@map("slot_blocks")
+}
+
+model Customer {
+  id            String    @id @default(cuid())
+  phone         String    @unique // Standardized e.g. "+923001234567"
+  name          String
+  email         String?
+  totalBookings Int       @default(0)
+  noShowCount   Int       @default(0)
+  isBlocked     Boolean   @default(false)
+  blockedReason String?
+  blockedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  bookings Booking[]
+
+  @@map("customers")
+}
+
+model BlockedPhone {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  reason    String
+  blockedBy String   @default("SYSTEM_AUTO_BLOCK")
+  createdAt DateTime @default(now())
+
+  @@map("blocked_phones")
+}
+
+model Booking {
+  id                       String        @id @default(cuid())
+  bookingCode              String        @unique // e.g. "IA-8K3F2Q"
+  courtId                  String
+  customerId               String
+  customerName             String
+  customerPhone            String
+  customerEmail            String?
+  sport                    SportType
+  date                     DateTime      // date of match
+  startTime                DateTime      // UTC start
+  endTime                  DateTime      // UTC end
+  totalDurationMinutes     Int
+  totalAmount              Decimal       @db.Decimal(10, 2)
+  status                   BookingStatus @default(CONFIRMED)
+  paymentStatus            PaymentStatus @default(UNPAID)
+  paymentMethod            PaymentMethod @default(CASH_ON_ARRIVAL)
+  cancelledAt              DateTime?
+  cancelledReason          String?
+  cancellationAllowedUntil DateTime
+  notes                    String?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+
+  court        Court         @relation(fields: [courtId], references: [id], onDelete: Restrict)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  bookingSlots BookingSlot[]
+
+  @@index([courtId, date])
+  @@index([customerPhone])
+  @@index([status])
+  @@index([createdAt])
+  @@map("bookings")
+}
+
+model BookingSlot {
+  id        String        @id @default(cuid())
+  bookingId String
+  courtId   String
+  startTime DateTime
+  endTime   DateTime
+  price     Decimal       @db.Decimal(10, 2)
+  status    BookingStatus @default(CONFIRMED)
+  createdAt DateTime      @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  court   Court   @relation(fields: [courtId], references: [id], onDelete: Restrict)
+
+  @@index([courtId, startTime, endTime])
+  @@index([bookingId])
+  @@index([courtId, startTime, status])
+  @@map("booking_slots")
+}
+
+model Settings {
+  id                        String   @id @default("global")
+  venueName                 String   @default("IndoorArena Sports Complex")
+  address                   String   @default("Plot 42, Block 5, Clifton, Karachi, Pakistan")
+  phone                     String   @default("+92 300 1234567")
+  email                     String   @default("contact@indoorarena.pk")
+  cancellationWindowHours   Int      @default(4)
+  maxActiveBookingsPerPhone Int      @default(2)
+  noShowBlockThreshold      Int      @default(3)
+  currency                  String   @default("PKR")
+  timezone                  String   @default("Asia/Karachi")
+  updatedAt                 DateTime @updatedAt
+
+  @@map("settings")
+}
+
